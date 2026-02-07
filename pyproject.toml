@@ -1,7 +1,16 @@
 [project]
 name = "arcana7"
 version = "0.1.0"
-description = "Add your description here"
+description = "Arcana7 Cost Calculator for 3D Printing"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "streamlit",
+    "pandas",
+    "plotly",
+    "openpyxl",
+    "fpdf2",
+]
+
+[tool.poetry]
+package-mode = false
