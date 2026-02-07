@@ -143,46 +143,84 @@ st.table(df_breakdown)
 
 # --- EXPORT SECTION ---
 st.write("---")
-st.subheader("📥 Export Invoice")
+st.subheader("📥 Export Invoices")
 
-def create_pdf():
+def create_pdf(mode="admin"):
     pdf = FPDF()
     pdf.add_page()
+    
+    # Header
     pdf.set_font("Helvetica", "B", 20)
-    pdf.cell(0, 10, "ARCANA7 COST INVOICE", ln=True, align="C")
+    title = "ARCANA7 INTERNAL COST SHEET" if mode == "admin" else "ARCANA7 QUOTATION / INVOICE"
+    pdf.cell(0, 10, title, ln=True, align="C")
+    
     pdf.set_font("Helvetica", "", 10)
     pdf.cell(0, 10, f"Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=True, align="R")
-    pdf.ln(10)
+    pdf.ln(5)
     
+    # Project Info
     pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 10, f"Product: {product_name}", ln=True)
+    pdf.cell(0, 10, f"Project / Product: {product_name}", ln=True)
     pdf.cell(0, 10, f"Quantity: {quantity}", ln=True)
     pdf.ln(5)
     
+    # Table Header
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(100, 10, "Cost Element", border=1)
-    pdf.cell(60, 10, "Details", border=1)
-    pdf.cell(30, 10, "Total (INR)", border=1, ln=True)
+    if mode == "admin":
+        pdf.cell(90, 10, "Cost Element", border=1)
+        pdf.cell(60, 10, "Internal Calculation", border=1)
+        pdf.cell(40, 10, "Cost (INR)", border=1, ln=True)
+    else:
+        pdf.cell(140, 10, "Service Category", border=1)
+        pdf.cell(50, 10, "Price (INR)", border=1, ln=True)
     
+    # Table Content
     pdf.set_font("Helvetica", "", 10)
     for i in range(len(breakdown_data["Element"]) - 1):
-        pdf.cell(100, 10, breakdown_data["Element"][i], border=1)
-        # Replace Rupee symbol with 'INR' for PDF compatibility
-        calc_text = str(breakdown_data["Calculation"][i]).replace("₹", "INR ")
-        pdf.cell(60, 10, calc_text, border=1)
-        pdf.cell(30, 10, f"{breakdown_data['Cost (₹)'][i]:.2f}", border=1, ln=True)
+        name = breakdown_data["Element"][i]
+        raw_cost = breakdown_data["Cost (₹)"][i]
+        calc = str(breakdown_data["Calculation"][i]).replace("₹", "INR ")
+        
+        if mode == "admin":
+            pdf.cell(90, 10, name, border=1)
+            pdf.cell(60, 10, calc, border=1)
+            pdf.cell(40, 10, f"{raw_cost:,.2f}", border=1, ln=True)
+        else:
+            # Scale the category price by the margin for the customer view
+            customer_category_price = raw_cost * markup_multiplier
+            pdf.cell(140, 10, name, border=1)
+            pdf.cell(50, 10, f"{customer_category_price:,.2f}", border=1, ln=True)
         
     pdf.ln(5)
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(160, 10, "Total Cost Per Unit:", border=0)
-    pdf.cell(30, 10, f"INR {total_base_cost_per_unit:.2f}", border=0, ln=True)
-    pdf.cell(160, 10, f"Selling Price Per Unit ({profit_margin_pct}% Margin):", border=0)
-    pdf.cell(30, 10, f"INR {selling_price_per_unit:.2f}", border=0, ln=True)
-    pdf.ln(5)
-    pdf.set_fill_color(0, 210, 255)
-    pdf.cell(160, 12, "GRAND TOTAL REVENUE:", border=1, fill=True)
-    pdf.cell(30, 12, f"INR {total_revenue:.2f}", border=1, fill=True, ln=True)
     
+    # Totals Section
+    pdf.set_font("Helvetica", "B", 11)
+    if mode == "admin":
+        pdf.cell(150, 10, "Total Internal Cost Per Unit:", border=0)
+        pdf.cell(40, 10, f"INR {total_base_cost_per_unit:,.2f}", border=0, ln=True)
+        pdf.cell(150, 10, f"Target Sales Price Per Unit ({profit_margin_pct}% Margin):", border=0)
+        pdf.cell(40, 10, f"INR {selling_price_per_unit:,.2f}", border=0, ln=True)
+        
+        pdf.ln(5)
+        pdf.set_fill_color(0, 210, 255)
+        pdf.cell(150, 12, "TOTAL ESTIMATED REVENUE:", border=1, fill=True)
+        pdf.cell(40, 12, f"INR {total_revenue:,.2f}", border=1, fill=True, ln=True)
+        pdf.cell(150, 12, "TOTAL ESTIMATED PROFIT:", border=1, fill=True)
+        pdf.cell(40, 12, f"INR {total_profit:,.2f}", border=1, fill=True, ln=True)
+    else:
+        pdf.cell(140, 10, "Unit Price (Inc. Design & Finishing):", border=0)
+        pdf.cell(50, 10, f"INR {selling_price_per_unit:,.2f}", border=0, ln=True)
+        
+        pdf.ln(5)
+        pdf.set_fill_color(0, 210, 255)
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(140, 15, "GRAND TOTAL PAYABLE:", border=1, fill=True)
+        pdf.cell(50, 15, f"INR {total_revenue:,.2f}", border=1, fill=True, ln=True)
+        
+        pdf.ln(10)
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.cell(0, 10, "Notice: This quote is valid for 15 days. Prices include all design and post-processing services.", ln=True)
+
     return bytes(pdf.output())
 
 def create_excel():
@@ -196,23 +234,34 @@ def create_excel():
         summary_df.to_excel(writer, index=False, sheet_name="Invoice Summary")
     return output.getvalue()
 
-c_exp1, c_exp2 = st.columns(2)
+# Layout for download buttons
+st.info("💡 **Admin Invoice** contains internal costs and margins. **Customer Invoice** scales category costs by margin to hide profit details.")
+c_exp1, c_exp2, c_exp3 = st.columns(3)
 
 with c_exp1:
-    pdf_bytes = create_pdf()
+    admin_pdf = create_pdf(mode="admin")
     st.download_button(
-        label="📄 Download PDF Invoice",
-        data=pdf_bytes,
-        file_name=f"Arcana7_Invoice_{product_name.replace(' ', '_')}.pdf",
+        label="🛡️ Download Admin Sheet",
+        data=admin_pdf,
+        file_name=f"Admin_Internal_{product_name}.pdf",
         mime="application/pdf",
     )
 
 with c_exp2:
+    customer_pdf = create_pdf(mode="customer")
+    st.download_button(
+        label="📜 Download Customer Invoice",
+        data=customer_pdf,
+        file_name=f"Quotation_{product_name}.pdf",
+        mime="application/pdf",
+    )
+
+with c_exp3:
     excel_bytes = create_excel()
     st.download_button(
-        label="📊 Download Excel Breakdown",
+        label="📊 Download Excel Data",
         data=excel_bytes,
-        file_name=f"Arcana7_Invoice_{product_name.replace(' ', '_')}.xlsx",
+        file_name=f"Arcana7_Data_{product_name}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
